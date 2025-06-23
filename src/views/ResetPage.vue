@@ -1,91 +1,99 @@
 <script setup lang="ts">
-import {ref, reactive} from "vue";
-import {EditPen, Lock, Message} from "@element-plus/icons-vue";
+import { ref, reactive, computed } from "vue";
+import { EditPen, Lock, Message } from "@element-plus/icons-vue";
 import router from "@/router";
-import {ElMessage} from "element-plus";
-import {get, post} from "@/net/index.ts";
+import { ElMessage } from "element-plus";
+import { get, post } from "@/net/index.ts";
 
-const active = ref(0)
-const formRef = ref()
-const coldTime = ref(0)
+// 定义响应式数据
+const active = ref<number>(0);
+const formRef = ref<any>();  // formRef 类型可以进一步明确
+const coldTime = ref<number>(0);
 
+// 表单数据
 const form = reactive({
   email: '',
   code: '',
   password: '',
   password_repeat: ''
-})
+});
 
-const validatePassword = (rules, value, callback) => {
+// 密码验证函数，声明参数类型
+const validatePassword = (rules: any, value: string, callback: (error?: Error) => void): void => {
   if (value === '') {
-    callback(new Error('请再次输入密码'))
+    callback(new Error('请再次输入密码'));
   } else if (value !== form.password) {
-    callback(new Error("两次输入的密码不一致"))
+    callback(new Error("两次输入的密码不一致"));
   } else {
-    callback()
+    callback();
   }
-}
+};
 
+// 表单验证规则
 const rules = {
   email: [
-    {required: true, message: '请输入邮件地址', trigger: 'blur'},
-    {type: 'email', message: '请输入合法的电子邮件地址', trigger: ['blur', 'change']}
+    { required: true, message: '请输入邮件地址', trigger: 'blur' },
+    { type: 'email', message: '请输入合法的电子邮件地址', trigger: ['blur', 'change'] }
   ],
   code: [
-    {required: true, message: '请输入获取的验证码', trigger: 'blur'},
+    { required: true, message: '请输入获取的验证码', trigger: 'blur' },
   ],
   password: [
-    {required: true, message: '请输入密码', trigger: 'blur'},
-    {min: 6, max: 20, message: '密码的长度必须在6-20个字符之间', trigger: ['blur']}
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 20, message: '密码的长度必须在6-20个字符之间', trigger: ['blur'] }
   ],
   password_repeat: [
-    {validator: validatePassword, trigger: ['blur', 'change']},
+    { validator: validatePassword, trigger: ['blur', 'change'] },
   ],
-}
+};
 
+// 获取验证码
 const askCode = () => {
-  if (isEmailValid) {
-    coldTime.value = 60
+  if (isEmailValid.value) {  // 计算属性的值
+    coldTime.value = 60;
     get(`/auth/ask-code?email=${form.email}&type=reset`, () => {
-      ElMessage.success(`验证码已发送到邮箱: ${form.email}，请注意查收`)
+      ElMessage.success(`验证码已发送到邮箱: ${form.email}，请注意查收`);
       const handle = setInterval(() => {
-        coldTime.value--
+        coldTime.value--;
         if (coldTime.value === 0) {
-          clearInterval(handle)
+          clearInterval(handle);
         }
-      }, 1000)
-    }, (message) => {
-      ElMessage.warning(message)
-      coldTime.value = 0
-    })
+      }, 1000);
+    }, (message: string) => {
+      ElMessage.warning(message);
+      coldTime.value = 0;
+    });
   } else {
-    ElMessage.warning("请输入正确的电子邮件！")
+    ElMessage.warning("请输入正确的电子邮件！");
   }
-}
+};
 
-const isEmailValid = computed(() => /^[\w.-]+@[\w.-]+\.\w+$/.test(form.email))
+// 验证邮箱是否合法
+const isEmailValid = computed(() => /^[\w.-]+@[\w.-]+\.\w+$/.test(form.email));
 
+// 确认重置
 const confirmReset = () => {
-  formRef.value.validate((isValid) => {
+  formRef.value.validate((isValid: boolean) => {  // 为 isValid 添加类型声明
     if (isValid) {
       post('/auth/reset-confirm', {
         email: form.email,
         code: form.code
-      }, () => active.value++)
+      }, () => active.value++);
     }
-  })
-}
+  });
+};
 
+// 重置密码
 const doReset = () => {
-  formRef.value.validate((isValid) => {
+  formRef.value.validate((isValid: boolean) => {  // 为 isValid 添加类型声明
     if (isValid) {
-      post('/auth/reset-password', {...form}, () => {
-        ElMessage.success('密码重置成功，请重新登录')
-        router.push('/login')
-      })
+      post('/auth/reset-password', { ...form }, () => {
+        ElMessage.success('密码重置成功，请重新登录');
+        router.push('/login');
+      });
     }
-  })
-}
+  });
+};
 </script>
 
 <template>

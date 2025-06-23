@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import {Lock, User} from "@element-plus/icons-vue";
+import { Lock, User } from "@element-plus/icons-vue";
 import router from "@/router";
-import {login} from "@/net/index.ts";
+import { login } from "@/net/index.ts";
+import { ref, reactive } from 'vue';
 
-const formRef = ref()
+// formRef 类型声明
+const formRef = ref<any>();
 
 const form = reactive({
   username: '',
@@ -13,15 +15,16 @@ const form = reactive({
 
 const rules = {
   username: [
-    {required: true, message: '请输入用户名'}
+    { required: true, message: '请输入用户名' }
   ],
   password: [
-    {required: true, message: '请输入密码'}
+    { required: true, message: '请输入密码' }
   ]
 }
 
+// 这里明确 isValid 的类型为 boolean
 const userLogin = () => {
-  formRef.value.validate((isValid) => {
+  formRef.value.validate((isValid: boolean) => {
     if (isValid) {
       login(form.username, form.password, form.remember,
           () => router.push('/home'))

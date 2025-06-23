@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
-import type {BusinessVO} from "@/type/businessVO.ts";
+import type { BusinessVO } from "@/type/businessVO.ts";
 
 const businesses = ref<BusinessVO[]>([])
 const loading = ref(true)
@@ -12,13 +12,33 @@ const router = useRouter()
 // 获取推荐商家数据
 const fetchRecommendBusiness = async () => {
   try {
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
+    // 1. 取 token，做 null 检查
+    const str = sessionStorage.getItem('access_token');
+    if (!str) {
+      error.value = '未登录或登录已过期，请重新登录。';
+      loading.value = false;
+      return;
+    }
+    const authObj = JSON.parse(str);
+    const token = authObj.token;
+    if (!token) {
+      error.value = '未找到 token，请重新登录。';
+      loading.value = false;
+      return;
+    }
+
+    // 2. 发送请求，解析 RestBean 格式
     const response = await axios.get('/api/business/get-recommend-business', {
       headers: {
         Authorization: `Bearer ${token}`
       }
-    })
-    businesses.value = response.data
+    });
+    // RestBean 格式：{ code: 200, message: "...", data: [...] }
+    if (response.data && response.data.code === 200) {
+      businesses.value = response.data.data;
+    } else {
+      error.value = response.data?.message || '无法加载推荐商家，请稍后重试。';
+    }
   } catch (err) {
     console.error('获取推荐商家数据失败:', err)
     error.value = '无法加载推荐商家，请稍后重试。'

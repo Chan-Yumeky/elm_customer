@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import BusinessListHeader from "@/components/businessList/BusinessListHeader.vue";
-import {ref, onMounted} from 'vue'
-import {useRoute, useRouter} from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
-import type {BusinessVO} from "@/type/businessVO.ts";
+import type { BusinessVO } from "@/type/businessVO.ts";
 
 const businesses = ref<BusinessVO[]>([])
 const loading = ref(true)
@@ -19,7 +19,22 @@ const orderTypeId = ref<number>(Number(route.query.orderTypeId))
 
 const fetchBusinessList = async () => {
   try {
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
+    // 1. 获取 token
+    const str = sessionStorage.getItem('access_token');
+    if (!str) {
+      error.value = '未登录或登录已过期，请重新登录。';
+      loading.value = false;
+      return;
+    }
+    const authObj = JSON.parse(str);
+    const token = authObj.token;
+    if (!token) {
+      error.value = '未找到 token，请重新登录。';
+      loading.value = false;
+      return;
+    }
+
+    // 2. 发送请求
     const response = await axios.get('/api/business/get-business-by-orderTypeId', {
       headers: {
         Authorization: `Bearer ${token}`
@@ -27,12 +42,20 @@ const fetchBusinessList = async () => {
       params: {
         orderTypeId: orderTypeId.value
       }
-    })
+    });
 
-    if (Array.isArray(response.data)) {
-      // 过滤掉 businessId 为 null 或 undefined 的对象
-      businesses.value = response.data.filter((item: BusinessVO) => item.businessId != null)
-    } else throw new Error('Unexpected response structure')
+    // 3. 处理 RestBean 格式的响应
+    if (response.data && response.data.code === 200) {
+      const data = response.data.data;
+      if (Array.isArray(data)) {
+        // 过滤掉 businessId 为 null 或 undefined 的对象
+        businesses.value = data.filter((item: BusinessVO) => item.businessId != null);
+      } else {
+        throw new Error('返回数据格式不正确');
+      }
+    } else {
+      error.value = response.data?.message || '获取商家列表失败';
+    }
   } catch (err) {
     console.error('获取商家列表失败:', err)
     error.value = '无法加载商家列表，请稍后重试。'
@@ -43,8 +66,21 @@ const fetchBusinessList = async () => {
 
 const fetchCartQuantities = async () => {
   try {
-    const userId = JSON.parse(sessionStorage.getItem('access_token')).id;
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
+    // 1. 获取 token 和 userId
+    const str = sessionStorage.getItem('access_token');
+    if (!str) {
+      console.error('未登录或登录已过期');
+      return;
+    }
+    const authObj = JSON.parse(str);
+    const token = authObj.token;
+    const userId = authObj.id;
+    if (!token || !userId) {
+      console.error('token 或 userId 不存在');
+      return;
+    }
+
+    // 2. 发送请求
     const response = await axios.get('/api/cart/get-cart-quantity', {
       headers: {
         Authorization: `Bearer ${token}`
@@ -53,9 +89,18 @@ const fetchCartQuantities = async () => {
         userId
       }
     });
-    response.data.forEach((item: { businessId: number; quantity: number }) => {
-      businessCartQuantity.value.set(item.businessId, item.quantity);
-    });
+
+    // 3. 处理 RestBean 格式的响应
+    if (response.data && response.data.code === 200) {
+      const data = response.data.data;
+      if (Array.isArray(data)) {
+        data.forEach((item: { businessId: number; quantity: number }) => {
+          businessCartQuantity.value.set(item.businessId, item.quantity);
+        });
+      }
+    } else {
+      console.warn('获取购物车数量失败:', response.data?.message);
+    }
   } catch (err) {
     console.error('获取购物车数量失败:', err);
   }
@@ -67,7 +112,7 @@ const getCartQuantityForBusiness = (businessId: number) => {
 };
 
 const navigateToBusinessInfo = (businessId: number) => {
-  router.push({name: 'businessInfo', query: {businessId: businessId}})
+  router.push({ name: 'businessInfo', query: { businessId: businessId } })
 }
 
 onMounted(() => {

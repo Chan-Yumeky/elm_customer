@@ -27,7 +27,7 @@ router.beforeEach((to, from, next) => {
     return;
   }
   // 如果用户未登录且访问非登录、注册或重置页面以外的页面，则重定向到登录页
-  if (isUnauthorized && !['login', 'register', 'reset'].includes(to.name)) {
+  if (isUnauthorized && typeof to.name === 'string' && !['login', 'register', 'reset'].includes(to.name)) {
     next('/login');
     return;
   }

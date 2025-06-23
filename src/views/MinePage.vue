@@ -20,6 +20,10 @@ const fetchAccountInfo = async () => {
     const id = parsedToken.id;
     const token = parsedToken.token;
 
+    if (!id || !token) {
+      throw new Error('用户ID或token不存在！');
+    }
+
     const response = await axios.get('/api/account/get-account-by-userId', {
       headers: {
         Authorization: `Bearer ${token}`
@@ -28,7 +32,13 @@ const fetchAccountInfo = async () => {
         userId: id
       }
     });
-    account.value = response.data;
+
+    // RestBean 格式：{ code: 200, message: "...", data: {...} }
+    if (response.data && response.data.code === 200) {
+      account.value = response.data.data;
+    } else {
+      error.value = response.data?.message || '无法加载个人信息，请稍后重试。';
+    }
   } catch (err) {
     console.error('获取个人信息失败:', err);
     error.value = '无法加载个人信息，请稍后重试。';

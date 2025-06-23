@@ -20,7 +20,7 @@ const orderTypeId = ref<number>(Number(route.query.orderTypeId))
 const fetchBusinessList = async () => {
   try {
     // 1. 获取 token
-    const str = sessionStorage.getItem('access_token');
+    const str = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
     if (!str) {
       error.value = '未登录或登录已过期，请重新登录。';
       loading.value = false;

@@ -13,7 +13,7 @@ const router = useRouter()
 const fetchRecommendBusiness = async () => {
   try {
     // 1. 取 token，做 null 检查
-    const str = sessionStorage.getItem('access_token');
+    const str = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
     if (!str) {
       error.value = '未登录或登录已过期，请重新登录。';
       loading.value = false;

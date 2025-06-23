@@ -12,7 +12,7 @@ const error = ref<string>("");
 
 const fetchAccountInfo = async () => {
   try {
-    const tokenData = sessionStorage.getItem('access_token');
+    const tokenData = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
     if (!tokenData) {
       throw new Error('未找到访问令牌！');
     }

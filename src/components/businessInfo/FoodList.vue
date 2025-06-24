@@ -2,7 +2,7 @@
 import { ref, onMounted, watch } from 'vue';
 import axios from 'axios';
 import type { FoodVO } from '@/type/foodVO.ts';
-import type {CartVO} from "@/type/cartVO.ts";
+import type { CartVO } from "@/type/cartVO.ts";
 import { useCartStore } from '@/stores/cartStore';
 
 const cartStore = useCartStore();
@@ -11,24 +11,38 @@ const props = defineProps<{
   businessId: number;
 }>();
 
-const cartList = ref<CartVO[]>([]);
 const foodList = ref<FoodVO[]>([]);
+const foodListForView = ref<(FoodVO & { quantity: number })[]>([]);
 const loading = ref<boolean>(true);
 const error = ref<string>('');
+
+function getTokenAndId() {
+  const str = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
+  if (!str) throw new Error('未找到访问令牌！');
+  const parsed = JSON.parse(str);
+  if (!parsed.token) throw new Error('未找到 token！');
+  if (!parsed.id) throw new Error('未找到用户ID！');
+  return { token: parsed.token as string, id: parsed.id as string | number };
+}
 
 // 获取食物数据
 const fetchFoodList = async () => {
   loading.value = true;
   error.value = '';
   try {
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
+    const { token } = getTokenAndId();
     const response = await axios.get('/api/food/list-food-by-BusinessId', {
       headers: {
         Authorization: `Bearer ${token}`
       },
       params: { businessId: props.businessId }
     });
-    foodList.value = response.data;
+    if (response.data && response.data.code === 200) {
+      foodList.value = response.data.data;
+      await fetchCartList(); // 先拿到 foodList，再拉购物车，保证 setCartList 能合并 foodPrice
+    } else {
+      error.value = response.data?.message || '无法加载食物列表，请稍后重试。';
+    }
   } catch (err) {
     console.error('获取食物列表失败:', err);
     error.value = '无法加载食物列表，请稍后重试。';
@@ -40,8 +54,7 @@ const fetchFoodList = async () => {
 // 获取购物车数据
 const fetchCartList = async () => {
   try {
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
-    const id = JSON.parse(sessionStorage.getItem('access_token')).id;
+    const { token, id } = getTokenAndId();
     const response = await axios.post('/api/cart/list-cart', {
       userId: id,
       businessId: props.businessId
@@ -50,9 +63,12 @@ const fetchCartList = async () => {
         Authorization: `Bearer ${token}`
       }
     });
-    cartList.value = response.data;
-    cartStore.cartList = response.data;
-    mergeFoodAndCart(); // 合并食物信息和购物车数据
+    if (response.data && response.data.code === 200) {
+      cartStore.setCartList(response.data.data, foodList.value);
+      mergeFoodAndCart();
+    } else {
+      error.value = response.data?.message || '无法加载购物车，请稍后重试。';
+    }
   } catch (err) {
     console.error('获取购物车失败:', err);
     error.value = '无法加载购物车，请稍后重试。';
@@ -61,33 +77,24 @@ const fetchCartList = async () => {
 
 // 合并食物和购物车数据
 const mergeFoodAndCart = () => {
-  foodList.value = foodList.value.map(food => {
-    const cartItem = cartList.value.find(cart => cart.foodId === food.foodId);
-    if (cartItem) {
-      cartItem.foodPrice = food.foodPrice || 0;
-      food.quantity = cartItem.quantity;
-    } else {
-      food.quantity = 0;
-    }
-    return food;
+  foodListForView.value = foodList.value.map(food => {
+    const cartItem = cartStore.cartList.find(cart => cart.foodId === food.foodId);
+    return {
+      ...food,
+      quantity: cartItem ? cartItem.quantity : 0
+    };
   });
 };
 
 // 更新购物车数量
 const updateCartQuantity = async (foodId: number, currentQuantity: number, foodPrice: number) => {
   const newQuantity = currentQuantity + 1;
-  const food = foodList.value.find(item => item.foodId === foodId);
-  if (food) {
-    food.quantity = newQuantity;
-  }
-
-  cartStore.updateCart(foodId, newQuantity, foodPrice);
-
   try {
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
-    const id = JSON.parse(sessionStorage.getItem('access_token')).id;
-    if (currentQuantity === 0) {
-      await axios.post('/api/cart/save-cart', {
+    const { token, id } = getTokenAndId();
+    const cartItem = cartStore.cartList.find(cart => cart.foodId === foodId);
+    let response;
+    if (!cartItem) {
+      response = await axios.post('/api/cart/save-cart', {
         userId: id,
         businessId: props.businessId,
         foodId: foodId
@@ -97,7 +104,7 @@ const updateCartQuantity = async (foodId: number, currentQuantity: number, foodP
         }
       });
     } else {
-      await axios.post('/api/cart/update-cart', {
+      response = await axios.post('/api/cart/update-cart', {
         userId: id,
         businessId: props.businessId,
         foodId: foodId,
@@ -107,6 +114,11 @@ const updateCartQuantity = async (foodId: number, currentQuantity: number, foodP
           Authorization: `Bearer ${token}`
         }
       });
+    }
+    if (response.data && response.data.code === 200) {
+      await fetchCartList();
+    } else {
+      error.value = response.data?.message || '操作失败，请稍后重试。';
     }
   } catch (err) {
     console.error('更新购物车失败:', err);
@@ -118,22 +130,11 @@ const updateCartQuantity = async (foodId: number, currentQuantity: number, foodP
 const removeCartItem = async (foodId: number, currentQuantity: number, foodPrice: number) => {
   if (currentQuantity > 0) {
     const newQuantity = currentQuantity - 1;
-    const food = foodList.value.find(item => item.foodId === foodId);
-    if (food) {
-      food.quantity = newQuantity;
-    }
-
-    if (newQuantity > 0) {
-      cartStore.updateCart(foodId, newQuantity, foodPrice);
-    } else {
-      cartStore.removeCart(foodId);
-    }
-
     try {
-      const token = JSON.parse(sessionStorage.getItem('access_token')).token;
-      const id = JSON.parse(sessionStorage.getItem('access_token')).id;
+      const { token, id } = getTokenAndId();
+      let response;
       if (newQuantity > 0) {
-        await axios.post('/api/cart/update-cart', {
+        response = await axios.post('/api/cart/update-cart', {
           userId: id,
           businessId: props.businessId,
           foodId: foodId,
@@ -144,7 +145,7 @@ const removeCartItem = async (foodId: number, currentQuantity: number, foodPrice
           }
         });
       } else {
-        await axios.post('/api/cart/remove-cart', {
+        response = await axios.post('/api/cart/remove-cart', {
           userId: id,
           businessId: props.businessId,
           foodId: foodId
@@ -153,6 +154,11 @@ const removeCartItem = async (foodId: number, currentQuantity: number, foodPrice
             Authorization: `Bearer ${token}`
           }
         });
+      }
+      if (response.data && response.data.code === 200) {
+        await fetchCartList();
+      } else {
+        error.value = response.data?.message || '操作失败，请稍后重试。';
       }
     } catch (err) {
       console.error('更新购物车失败:', err);
@@ -164,7 +170,6 @@ const removeCartItem = async (foodId: number, currentQuantity: number, foodPrice
 onMounted(() => {
   if (props.businessId) {
     fetchFoodList();
-    fetchCartList();
   } else {
     error.value = '缺少 businessId 参数。';
     loading.value = false;
@@ -185,7 +190,7 @@ watch(() => props.businessId, (newId) => {
     <div v-else>
       <div class="w-full">
         <div
-            v-for="food in foodList"
+            v-for="food in foodListForView"
             :key="food.foodId"
             class="w-full h-[25vw] flex justify-between items-center  border-b border-gray-300"
         >

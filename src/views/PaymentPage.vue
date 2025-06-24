@@ -12,6 +12,16 @@ const router = useRouter();
 
 const orderId = ref<number>(Number(route.query.orderId));
 
+// 安全获取 token 和 id
+function getTokenAndId() {
+  const str = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
+  if (!str) throw new Error('未找到访问令牌！');
+  const parsed = JSON.parse(str);
+  if (!parsed.token) throw new Error('未找到 token！');
+  if (!parsed.id) throw new Error('未找到用户ID！');
+  return { token: parsed.token as string, id: Number(parsed.id) };
+}
+
 const selectedPayment = ref<'ALiPay' | 'WeChatPay' | null>('ALiPay');
 
 const togglePayment = (payment: 'ALiPay' | 'WeChatPay') => {
@@ -24,17 +34,12 @@ const togglePayment = (payment: 'ALiPay' | 'WeChatPay') => {
 
 const isFoodListVisible = ref(false);
 
-const businessInfo = ref<OrdersBusinessVO | null>({});
+const businessInfo = ref<OrdersBusinessVO | null>(null);
 const foodInfo = ref<OrdersFoodVO[]>([]);
 
 const fetchOrderData = async () => {
   try {
-    const tokenData = sessionStorage.getItem('access_token');
-    if (!tokenData) {
-      console.error('没有找到访问令牌');
-      return;
-    }
-    const { token, id } = JSON.parse(tokenData);
+    const { token } = getTokenAndId();
 
     // 获取商家信息
     const businessResponse = await axios.get('/api/orders/get-business-info', {
@@ -45,7 +50,14 @@ const fetchOrderData = async () => {
         Authorization: `Bearer ${token}`
       }
     });
-    businessInfo.value = businessResponse.data;
+
+    if (businessResponse.data && businessResponse.data.code === 200) {
+      businessInfo.value = businessResponse.data.data;
+    } else {
+      businessInfo.value = null;
+      console.error('获取商家信息失败:', businessResponse.data?.message || '未知错误');
+      ElMessage.error('获取商家信息失败');
+    }
 
     // 获取食物信息
     const foodResponse = await axios.get('/api/orders/get-food-info', {
@@ -56,20 +68,30 @@ const fetchOrderData = async () => {
         Authorization: `Bearer ${token}`
       }
     });
-    foodInfo.value = foodResponse.data;
+
+    if (foodResponse.data && foodResponse.data.code === 200) {
+      foodInfo.value = foodResponse.data.data;
+    } else {
+      foodInfo.value = [];
+      console.error('获取食物信息失败:', foodResponse.data?.message || '未知错误');
+      ElMessage.error('获取食物信息失败');
+    }
   } catch (error) {
-    console.log('获取订单数据失败:', error);
+    console.error('获取订单数据失败:', error);
+    ElMessage.error('获取订单数据失败');
+    businessInfo.value = null;
+    foodInfo.value = [];
   }
 }
 
 const payment = async () => {
+  if (!selectedPayment.value) {
+    ElMessage.warning('请选择支付方式');
+    return;
+  }
+
   try {
-    const tokenData = sessionStorage.getItem('access_token');
-    if (!tokenData) {
-      ElMessage.error("未找到访问令牌！");
-      return;
-    }
-    const { token, id } = JSON.parse(tokenData);
+    const { token, id } = getTokenAndId();
 
     const response = await axios.post('/api/orders/payment', {
       userId: id,
@@ -79,12 +101,18 @@ const payment = async () => {
         Authorization: `Bearer ${token}`,
       }
     });
-    const isPay = response.data;
-    if (isPay) {
-      ElMessage.success("支付成功！");
-      await router.push('/home');
+
+    if (response.data && response.data.code === 200) {
+      const isPay = response.data.data;
+      if (isPay) {
+        ElMessage.success("支付成功！");
+        await router.push('/home');
+      } else {
+        ElMessage.error("支付失败，请稍后重试！");
+      }
     } else {
-      ElMessage.error("出现异常！");
+      console.error('支付失败:', response.data?.message || '未知错误');
+      ElMessage.error("支付失败，请稍后重试！");
     }
   } catch (error) {
     console.error('支付失败:', error);
@@ -104,7 +132,7 @@ onMounted(() => {
     订单信息：
   </h3>
 
-  <div class="flex justify-between items-center p-[4vw] text-[#666] text-[4.5vw]">
+  <div v-if="businessInfo" class="flex justify-between items-center p-[4vw] text-[#666] text-[4.5vw]">
     <span class="flex">
       {{ businessInfo.businessName }}
       <i-octicon-triangle-down-24
@@ -126,7 +154,7 @@ onMounted(() => {
       <span class="text-[3.5vw] text-[#666]">¥ {{ food.foodPrice * food.quantity }}</span>
     </div>
     <!-- 配送费 -->
-    <div class="flex justify-between items-center px-[4vw] py-[1vw]">
+    <div v-if="businessInfo" class="flex justify-between items-center px-[4vw] py-[1vw]">
       <span class="text-[3.5vw] text-[#666]">配送费</span>
       <span class="text-[3.5vw] text-[#666]">¥ {{ businessInfo.deliveryPrice }}</span>
     </div>

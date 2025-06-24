@@ -14,7 +14,15 @@ const emit = defineEmits<{
   (e: 'update-daId', daId: number | null): void;
 }>();
 
-const token = JSON.parse(sessionStorage.getItem('access_token')).token;
+// 安全获取 token 和 id
+function getTokenAndId() {
+  const str = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
+  if (!str) throw new Error('未找到访问令牌！');
+  const parsed = JSON.parse(str);
+  if (!parsed.token) throw new Error('未找到 token！');
+  if (!parsed.id) throw new Error('未找到用户ID！');
+  return { token: parsed.token as string, id: Number(parsed.id) };
+}
 
 // 状态变量
 const addresses = ref<DeliveryAddressVO[]>([]);
@@ -41,23 +49,37 @@ const form = ref<{
 // 获取所有地址
 const fetchAddresses = async () => {
   try {
-    const response = await axios.get<DeliveryAddressVO[]>('/api/deliveryAddress/get-all-address', {
+    const { token } = getTokenAndId();
+    const response = await axios.get('/api/deliveryAddress/get-all-address', {
       params: {
         userId: props.userId
-      }, headers: {
+      },
+      headers: {
         Authorization: `Bearer ${token}`
       }
     });
-    addresses.value = response.data;
-    if (addresses.value.length > 0) {
-      selectedAddress.value = addresses.value[0];
-      emit('update-daId', selectedAddress.value.daId);
+
+    // 适配 RestBean 响应格式
+    if (response.data && response.data.code === 200) {
+      addresses.value = response.data.data;
+      if (addresses.value.length > 0) {
+        selectedAddress.value = addresses.value[0];
+        emit('update-daId', selectedAddress.value.daId);
+      } else {
+        selectedAddress.value = null;
+        emit('update-daId', null);
+      }
     } else {
+      addresses.value = [];
       selectedAddress.value = null;
       emit('update-daId', null);
+      console.error('获取地址列表失败:', response.data?.message || '未知错误');
     }
   } catch (error) {
     console.error('获取地址列表失败:', error);
+    addresses.value = [];
+    selectedAddress.value = null;
+    emit('update-daId', null);
   }
 };
 
@@ -107,25 +129,36 @@ const openEditDialog = (address: DeliveryAddressVO) => {
 // 删除地址
 const deleteAddress = async (daId: number) => {
   try {
-    await axios.post('/api/deliveryAddress/remove-address', null, {
+    const { token } = getTokenAndId();
+    const response = await axios.post('/api/deliveryAddress/remove-address', null, {
       params: {
         daId
-      }, headers: {
+      },
+      headers: {
         Authorization: `Bearer ${token}`
       }
     });
-    await fetchAddresses();
-    if (selectedAddress.value?.daId === daId) {
-      if (addresses.value.length > 0) {
-        selectedAddress.value = addresses.value[0];
-        emit('update-daId', selectedAddress.value.daId);
-      } else {
-        selectedAddress.value = null;
-        emit('update-daId', null);
+
+    // 检查响应状态
+    if (response.data && response.data.code === 200) {
+      await fetchAddresses();
+      if (selectedAddress.value?.daId === daId) {
+        if (addresses.value.length > 0) {
+          selectedAddress.value = addresses.value[0];
+          emit('update-daId', selectedAddress.value.daId);
+        } else {
+          selectedAddress.value = null;
+          emit('update-daId', null);
+        }
       }
+      ElMessage.success('地址删除成功');
+    } else {
+      console.error('删除地址失败:', response.data?.message || '未知错误');
+      ElMessage.error('删除地址失败');
     }
   } catch (error) {
     console.error('删除地址失败:', error);
+    ElMessage.error('删除地址失败');
   }
 };
 
@@ -136,45 +169,60 @@ const submitForm = async () => {
     return;
   }
 
-  if (isEditing.value && form.value.daId !== undefined) {
-    const updateRO: DeliveryAddressUpdateRO = {
-      daId: form.value.daId,
-      contactName: form.value.contactName,
-      contactSex: form.value.contactSex,
-      contactTel: form.value.contactTel,
-      address: form.value.address,
-      userId: props.userId,
-    };
-    try {
-      await axios.post('/api/deliveryAddress/update-address', updateRO, {
+  try {
+    const { token } = getTokenAndId();
+
+    if (isEditing.value && form.value.daId !== undefined) {
+      const updateRO: DeliveryAddressUpdateRO = {
+        daId: form.value.daId,
+        contactName: form.value.contactName,
+        contactSex: form.value.contactSex,
+        contactTel: form.value.contactTel,
+        address: form.value.address,
+        userId: props.userId,
+      };
+
+      const response = await axios.post('/api/deliveryAddress/update-address', updateRO, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      await fetchAddresses();
-      addEditDialogVisible.value = false;
-    } catch (error) {
-      console.error('更新地址失败:', error);
-    }
-  } else {
-    const saveRO: DeliveryAddressSaveRO = {
-      contactName: form.value.contactName,
-      contactSex: form.value.contactSex,
-      contactTel: form.value.contactTel,
-      address: form.value.address,
-      userId: props.userId,
-    };
-    try {
-      await axios.post('/api/deliveryAddress/save-address', saveRO, {
+
+      if (response.data && response.data.code === 200) {
+        await fetchAddresses();
+        addEditDialogVisible.value = false;
+        ElMessage.success('地址更新成功');
+      } else {
+        console.error('更新地址失败:', response.data?.message || '未知错误');
+        ElMessage.error('更新地址失败');
+      }
+    } else {
+      const saveRO: DeliveryAddressSaveRO = {
+        contactName: form.value.contactName,
+        contactSex: form.value.contactSex,
+        contactTel: form.value.contactTel,
+        address: form.value.address,
+        userId: props.userId,
+      };
+
+      const response = await axios.post('/api/deliveryAddress/save-address', saveRO, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      await fetchAddresses();
-      addEditDialogVisible.value = false;
-    } catch (error) {
-      console.error('保存地址失败:', error);
+
+      if (response.data && response.data.code === 200) {
+        await fetchAddresses();
+        addEditDialogVisible.value = false;
+        ElMessage.success('地址保存成功');
+      } else {
+        console.error('保存地址失败:', response.data?.message || '未知错误');
+        ElMessage.error('保存地址失败');
+      }
     }
+  } catch (error) {
+    console.error('操作失败:', error);
+    ElMessage.error('操作失败');
   }
 };
 
@@ -192,10 +240,6 @@ const confirmDelete = (daId: number) => {
   })
       .then(() => {
         deleteAddress(daId);
-        ElMessage({
-          type: 'success',
-          message: '地址已删除',
-        });
       })
       .catch(() => {
         ElMessage({

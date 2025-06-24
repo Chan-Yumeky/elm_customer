@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BusinessInfoHeader from "@/components/businessInfo/BusinessInfoHeader.vue";
 import {useRoute, useRouter } from "vue-router";
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import type {BusinessVO} from "@/type/businessVO.ts";
 import Cart from "@/components/businessInfo/Cart.vue";
@@ -18,7 +19,17 @@ const error = ref<string>('')
 
 const fetchBusinessInfo = async () => {
   try {
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
+    const tokenData = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
+    if (!tokenData) {
+      throw new Error('未找到访问令牌！');
+    }
+    const parsedToken = JSON.parse(tokenData);
+    const token = parsedToken.token;
+
+    if (!token) {
+      throw new Error('token 不存在！');
+    }
+
     const response = await axios.get('/api/business/get-business-by-businessId', {
       headers: {
         Authorization: `Bearer ${token}`
@@ -26,13 +37,19 @@ const fetchBusinessInfo = async () => {
       params: {
         businessId: businessId.value
       }
-    })
-    business.value = response.data
+    });
+
+    // RestBean 格式：{ code: 200, message: "...", data: {...} }
+    if (response.data && response.data.code === 200) {
+      business.value = response.data.data;
+    } else {
+      error.value = response.data?.message || '无法加载商家信息，请稍后重试。';
+    }
   } catch (err) {
-    console.error('获取商家信息失败:', err)
-    error.value = '无法加载商家信息，请稍后重试。'
+    console.error('获取商家信息失败:', err);
+    error.value = '无法加载商家信息，请稍后重试。';
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 

@@ -2,7 +2,13 @@
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import OrderListHeader from "@/components/orderList/orderListHeader.vue";
-import type {AllOrderListVO} from "@/type/allOrderListVO.ts";
+import type { AllOrderListVO } from "@/type/allOrderListVO.ts";
+
+interface RestBean<T> {
+  code: number;
+  data: T;
+  message: string;
+}
 
 // 状态变量
 const allOrderList = ref<AllOrderListVO>({
@@ -16,13 +22,13 @@ const orderDetailVisibility = ref<Record<string, boolean>>({});
 // 获取订单信息的函数
 const fetchAllOrders = async () => {
   try {
-    const tokenData = sessionStorage.getItem('access_token');
-    if (!tokenData) {
-      console.error('没有找到访问令牌');
-      return;
-    }
+    const tokenData = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
+    if (!tokenData) throw new Error('未找到访问令牌！');
+
     const { token, id } = JSON.parse(tokenData);
-    const response = await axios.get<AllOrderListVO>('/api/orders/get-all-order-info', {
+
+    // 明确告诉 axios，我们期望获得 RestBean<AllOrderListVO> 类型的数据
+    const response = await axios.get<RestBean<AllOrderListVO>>('/api/orders/get-all-order-info', {
       params: {
         userId: id
       },
@@ -30,19 +36,30 @@ const fetchAllOrders = async () => {
         Authorization: `Bearer ${token}`
       }
     });
-    allOrderList.value = response.data;
 
-    // 初始化每个订单的详情显示状态为 false
-    const visibility: Record<string, boolean> = {};
-    response.data.paidList.forEach((_, index) => {
-      visibility[`paid-${index}`] = false;
-    });
-    response.data.unpaidList.forEach((_, index) => {
-      visibility[`unpaid-${index}`] = false;
-    });
-    orderDetailVisibility.value = visibility;
+    if (response.data && response.data.code === 200) {
+      allOrderList.value = response.data.data;
+
+      // 初始化每个订单的详情显示状态为 false
+      const visibility: Record<string, boolean> = {};
+      if (response.data.data.paidList) {
+        response.data.data.paidList.forEach((_: any, index: number) => {
+          visibility[`paid-${index}`] = false;
+        });
+      }
+      if (response.data.data.unpaidList) {
+        response.data.data.unpaidList.forEach((_: any, index: number) => {
+          visibility[`unpaid-${index}`] = false;
+        });
+      }
+      orderDetailVisibility.value = visibility;
+    } else {
+      console.error('获取订单信息失败:', response.data?.message || '未知错误');
+      allOrderList.value = { paidList: [], unpaidList: [] };
+    }
   } catch (error) {
     console.error('获取订单信息失败:', error);
+    allOrderList.value = { paidList: [], unpaidList: [] };
   }
 };
 

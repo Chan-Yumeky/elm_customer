@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import {useCartStore} from '@/stores/cartStore';
+import { ref, computed, onMounted } from 'vue';
+import { useCartStore } from '@/stores/cartStore';
 import router from "@/router/index.ts";
 import axios from 'axios';
 
@@ -13,16 +14,24 @@ const cartQuantity = computed(() => cartStore.totalQuantity);
 const cartAmount = computed(() => cartStore.totalPrice);
 const deliveryFee = ref<number>(0);
 
+// 获取配送费
 const fetchDeliveryFee = async () => {
   try {
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
-    const response = await axios.get(`/api/business/get-delivery-price`, {
+    const tokenData = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
+    if (!tokenData) throw new Error('未找到访问令牌！');
+    const token = JSON.parse(tokenData).token;
+    const response = await axios.get('/api/business/get-delivery-price', {
       headers: {
         Authorization: `Bearer ${token}`
       },
-      params: {businessId: props.businessId}
+      params: { businessId: props.businessId }
     });
-    deliveryFee.value = response.data;
+    if (response.data && response.data.code === 200) {
+      deliveryFee.value = response.data.data;
+    } else {
+      deliveryFee.value = 0;
+      console.error('获取配送费失败:', response.data?.message || '未知错误');
+    }
   } catch (error) {
     console.error('获取配送费失败:', error);
     deliveryFee.value = 0;
@@ -35,10 +44,14 @@ const buttonClass = computed(() => {
       : 'bg-[#D3D3D3] cursor-not-allowed';
 });
 
+// 创建订单并跳转
 const NavigateToOrderPage = async () => {
   try {
-    const token = JSON.parse(sessionStorage.getItem('access_token')).token;
-    const id = JSON.parse(sessionStorage.getItem('access_token')).id;
+    const tokenData = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
+    if (!tokenData) throw new Error('未找到访问令牌！');
+    const parsed = JSON.parse(tokenData);
+    const token = parsed.token;
+    const id = parsed.id;
     const response = await axios.post('/api/orders/create-orders', {
       userId: id,
       businessId: props.businessId,
@@ -48,15 +61,23 @@ const NavigateToOrderPage = async () => {
         Authorization: `Bearer ${token}`,
       }
     });
-    const orderId = response.data;
-    await router.push({ name: 'order', query: {orderId: orderId}});
+    if (response.data && response.data.code === 200) {
+      const orderId = response.data.data;
+      console.log("AAAAAA  " + orderId);
+      await router.push({ name: 'order', query: { orderId: orderId } });
+    } else {
+      console.log(1);
+      console.error('创建订单失败:', response.data?.message || '未知错误');
+    }
   } catch (error) {
+    console.log(2);
     console.error('创建订单失败:', error);
   }
 }
 
 onMounted(() => {
   fetchDeliveryFee();
+  // 不需要再 fetchCartList，只要 FoodList.vue 里 fetch 过，Pinia 就有数据
 });
 </script>
 

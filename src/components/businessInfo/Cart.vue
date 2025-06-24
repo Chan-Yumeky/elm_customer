@@ -63,7 +63,6 @@ const NavigateToOrderPage = async () => {
     });
     if (response.data && response.data.code === 200) {
       const orderId = response.data.data;
-      console.log("AAAAAA  " + orderId);
       await router.push({ name: 'order', query: { orderId: orderId } });
     } else {
       console.log(1);

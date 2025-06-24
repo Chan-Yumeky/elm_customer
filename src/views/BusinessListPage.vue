@@ -67,7 +67,7 @@ const fetchBusinessList = async () => {
 const fetchCartQuantities = async () => {
   try {
     // 1. 获取 token 和 userId
-    const str = sessionStorage.getItem('access_token');
+    const str = localStorage.getItem("access_token") || sessionStorage.getItem('access_token');
     if (!str) {
       console.error('未登录或登录已过期');
       return;

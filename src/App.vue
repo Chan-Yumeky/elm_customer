@@ -17,7 +17,12 @@ const navigateTo = (path: string) => {
 </script>
 
 <template>
-  <RouterView></RouterView>
+  <router-view v-slot="{ Component }">
+    <keep-alive>
+      <component :is="Component" v-if="$route.name === 'search'" />
+    </keep-alive>
+    <component :is="Component" v-if="$route.name !== 'search'" />
+  </router-view>
 
   <div v-if="showNav"
       class="w-full h-[14vw] border-t border-[#DDD]

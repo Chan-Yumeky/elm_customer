@@ -15,6 +15,7 @@ const router = createRouter({
     {name: 'mine', path: '/mine', component: () => import('@/views/MinePage.vue')},
     {name: 'payment', path: '/payment', component: () => import('@/views/PaymentPage.vue')},
     {name: 'orderList', path: '/orderList', component: () => import('@/views/OrderListPage.vue')},
+    {name: 'search', path: '/search', component: () => import('@/views/SearchPage.vue')},
   ],
 })
 
